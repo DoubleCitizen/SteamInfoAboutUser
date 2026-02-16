@@ -3,7 +3,7 @@
 A sleek Telegram bot that provides detailed Steam profile information, friend statistics, and gaming activity. It even features a cheeky, AI-powered roast of your gaming habits!
 
 ![Steam Bot Demo](resources/screenshot.png) 
-*(Note: Replace with actual screenshot/gif if available)*
+
 
 ## ✨ Features
 
