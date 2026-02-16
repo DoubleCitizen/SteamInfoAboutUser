@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# === Настройка ===
+# === Setup ===
 load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -23,15 +23,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# === Вспомогательные функции ===
+# === Helper Functions ===
 
 def resolve_steam_id(user_input: str) -> Optional[str]:
-    """Преобразует SteamID64, vanity URL или кастомный ник в SteamID64."""
+    """Resolves SteamID64, vanity URL, or custom nickname to SteamID64."""
     user_input = user_input.strip()
     if user_input.isdigit() and len(user_input) >= 15:
         return user_input
 
-    # Попытка разрешить как vanity URL
+    # Try to resolve as vanity URL
     url = "https://api.steampowered.com/ISteamUser/ResolveVanityURL/v0001/"
     try:
         resp = requests.get(url, params={"key": STEAM_API_KEY, "vanityurl": user_input}, timeout=10)
@@ -40,16 +40,16 @@ def resolve_steam_id(user_input: str) -> Optional[str]:
         if data["response"]["success"] == 1:
             return data["response"]["steamid"]
     except Exception as e:
-        logger.error(f"Ошибка при разрешении vanity URL '{user_input}': {e}")
+        logger.error(f"Error resolving vanity URL '{user_input}': {e}")
     return None
 
 
 def fetch_steam_profile(steam_id: str) -> Optional[Dict[str, Any]]:
-    """Получает полные данные профиля, друзей и игр."""
+    """Fetches full profile, friend list, and game data."""
     base_url = "https://api.steampowered.com"
     headers = {"Content-Type": "application/json"}
 
-    # --- Профиль ---
+    # --- Profile ---
     profile_resp = requests.get(
         f"{base_url}/ISteamUser/GetPlayerSummaries/v0002/",
         params={"key": STEAM_API_KEY, "steamids": steam_id},
@@ -63,7 +63,7 @@ def fetch_steam_profile(steam_id: str) -> Optional[Dict[str, Any]]:
         return None
     user_data = players[0]
 
-    # --- Друзья ---
+    # --- Friends ---
     friends_list = []
     try:
         friends_resp = requests.get(
@@ -88,9 +88,9 @@ def fetch_steam_profile(steam_id: str) -> Optional[Dict[str, Any]]:
                         batch_profiles = profiles_resp.json().get("response", {}).get("players", [])
                         friends_list.extend(batch_profiles)
     except Exception as e:
-        logger.warning(f"Ошибка загрузки друзей: {e}")
+        logger.warning(f"Error loading friends: {e}")
 
-    # --- Игры ---
+    # --- Games ---
     owned_games = []
     try:
         games_resp = requests.get(
@@ -109,7 +109,7 @@ def fetch_steam_profile(steam_id: str) -> Optional[Dict[str, Any]]:
             sorted_games = sorted(all_games, key=lambda g: g.get("playtime_forever", 0), reverse=True)
             owned_games = sorted_games[:10]
     except Exception as e:
-        logger.warning(f"Ошибка загрузки игр: {e}")
+        logger.warning(f"Error loading games: {e}")
 
     return {
         "profile": user_data,
@@ -166,7 +166,7 @@ async def llm_message(message: str) -> str:
     - If you sound mean or generic, you lose XP.
 
     Steam profile summary:
-    Напиши на русском языке
+    Write in English.
     {message}
     """
     try:
@@ -179,21 +179,21 @@ async def llm_message(message: str) -> str:
         resp.raise_for_status()
         answer = resp.json()["message"]["content"]
     except Exception as e:
-        logger.error(f"Ошибка ИИ: {e}")
+        logger.error(f"AI Error: {e}")
         answer = "Sorry, I'm having trouble thinking right now. 😕"
 
     return f"{answer}\n\n{message}"
 
 
-# === Обработчики Telegram ===
+# === Telegram Handlers ===
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Привет! Отправь мне свой SteamID (цифровой или кастомный URL), и я покажу информацию о твоём профиле.\n"
-        "Примеры:\n"
+        "Hi! Send me your SteamID (numeric or custom URL), and I'll show you information about your profile.\n"
+        "Examples:\n"
         "- 76561198000000000\n"
-        "- https://steamcommunity.com/id/ваш_ник/\n"
-        "- ваш_ник"
+        "- https://steamcommunity.com/profiles/your_id/\n"
+        "- your_id"
     )
 
 
@@ -209,33 +209,33 @@ async def handle_steam_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif "/profiles/" in text:
             steam_id = text.split("/profiles/")[-1].split("/")[0]
         else:
-            await update.message.reply_text("❌ Неверный формат ссылки.")
+            await update.message.reply_text("❌ Invalid link format.")
             return
     else:
         steam_id = resolve_steam_id(text)
 
     if not steam_id:
         await update.message.reply_text(
-            "❌ Не удалось найти профиль. Убедитесь, что ник верный и профиль публичный."
+            "❌ Could not find profile. Make sure the nickname is correct and the profile is public."
         )
         return
 
     profile_data = fetch_steam_profile(steam_id)
     if not profile_data:
-        await update.message.reply_text("❌ Не удалось получить данные. Профиль приватный или не существует.")
+        await update.message.reply_text("❌ Could not retrieve data. Profile is private or does not exist.")
         return
 
-    # Краткий вывод в Telegram
+    # Short output in Telegram
     p = profile_data["profile"]
-    status_map = {0: "Оффлайн", 1: "Онлайн", 2: "Занят", 3: "Отошёл", 4: "Спит", 5: "Хочет поиграть", 6: "Не видно"}
-    status = status_map.get(p.get("personastate"), "Неизвестно")
-    visibility = "Публичный" if p.get("communityvisibilitystate") == 3 else "Приватный"
+    status_map = {0: "Offline", 1: "Online", 2: "Busy", 3: "Away", 4: "Snooze", 5: "Looking to play", 6: "Hidden"}
+    status = status_map.get(p.get("personastate"), "Unknown")
+    visibility = "Public" if p.get("communityvisibilitystate") == 3 else "Private"
 
     caption = (
-        f"👤 <b>Имя:</b> {p.get('personaname', '—')}\n"
-        f"🌐 <b>Статус:</b> {status}\n"
-        f"👁️ <b>Видимость:</b> {visibility}\n"
-        f"🔗 <a href='{p.get('profileurl', '')}'>Открыть профиль</a>"
+        f"👤 <b>Name:</b> {p.get('personaname', '—')}\n"
+        f"🌐 <b>Status:</b> {status}\n"
+        f"👁️ <b>Visibility:</b> {visibility}\n"
+        f"🔗 <a href='{p.get('profileurl', '')}'>Open Profile</a>"
     )
 
     avatar = p.get("avatarfull")
@@ -250,7 +250,7 @@ async def handle_steam_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(roast)
 
 
-# === Инициализация ===
+# === Initializers ===
 
 def wait_for_ollama(url: str, timeout: int = 60):
     start = time.time()
@@ -272,20 +272,20 @@ def load_model_if_needed(model_name: str = "phi3:mini"):
         if resp.status_code == 200:
             models = resp.json().get("models", [])
             if any(model_name == m["name"] for m in models):
-                logger.info(f"✅ Модель {model_name} уже загружена.")
+                logger.info(f"✅ Model {model_name} is already loaded.")
                 return
     except Exception as e:
-        logger.warning(f"Не удалось проверить модели: {e}")
+        logger.warning(f"Failed to check models: {e}")
 
-    logger.info(f"📥 Загружаем модель: {model_name}...")
+    logger.info(f"📥 Pulling model: {model_name}...")
     try:
         resp = requests.post("http://ollama:11434/api/pull", json={"name": model_name}, stream=True, timeout=600)
         resp.raise_for_status()
         for _ in resp.iter_lines():
             pass
-        logger.info(f"✅ Модель {model_name} успешно загружена!")
+        logger.info(f"✅ Model {model_name} pulled successfully!")
     except Exception as e:
-        logger.error(f"❌ Ошибка загрузки модели {model_name}: {e}")
+        logger.error(f"❌ Error pulling model {model_name}: {e}")
         raise
 
 
@@ -297,7 +297,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_steam_id))
 
-    logger.info("Бот запущен...")
+    logger.info("Bot started...")
     app.run_polling()
 
 
